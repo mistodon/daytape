@@ -1,4 +1,9 @@
-use std::ops::{Add, AddAssign, Sub, SubAssign};
+use std::{
+    collections::HashMap,
+    ops::{Add, AddAssign, Sub, SubAssign},
+};
+
+use chrono::NaiveDate;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -97,6 +102,11 @@ pub struct Task {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DayState {
-    pub date: String,
+    pub date: NaiveDate,
     pub tasks: Vec<Task>,
+}
+
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Schedule {
+    pub dates: HashMap<NaiveDate, DayState>,
 }

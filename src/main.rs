@@ -1,8 +1,48 @@
 use chrono::Timelike;
+use clap::Parser;
+use color_eyre::eyre::Result;
 use directories::ProjectDirs;
 use termbuffer::Color;
 
-use daytape::{DayState, Task, Time, TimeSlot};
+use daytape::{DayState, Schedule, Task, Time, TimeSlot};
+
+/// A whole day's schedule in your terminal
+#[derive(Debug, Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[command(subcommand)]
+    sub: Option<SubCommand>,
+
+    #[command(flatten)]
+    show_args: ShowArgs,
+}
+
+#[derive(Debug, Parser)]
+enum SubCommand {
+    /// Show the schedule (default behaviour)
+    Show {
+        #[command(flatten)]
+        show_args: ShowArgs,
+    },
+
+    /// Edit the schedule
+    Edit {
+        /// Edit tomorrow's schedule instead of today's
+        #[arg(long)]
+        tomorrow: bool,
+    },
+}
+
+#[derive(Parser, Debug)]
+struct ShowArgs {
+    /// Show tomorrow's schedule instead of today's
+    #[arg(long)]
+    tomorrow: bool,
+
+    /// The number of characters to display in the day tape
+    #[arg(short, long, default_value_t = 48)]
+    width: u32,
+}
 
 const COLORS: &[[u8; 3]] = &[
     [190, 0, 0],
@@ -32,36 +72,43 @@ fn get_dirs() -> ProjectDirs {
     dirs
 }
 
-fn main() {
-    let mut args = std::env::args().skip(1);
-    let editing = args.next().map(|x| x.as_str() == "-e").unwrap_or(false);
+fn target_date(now: chrono::DateTime<chrono::Local>, tomorrow: bool) -> chrono::NaiveDate {
+    let tomorrow = tomorrow || now.hour() > 18;
+    let offset = match tomorrow {
+        true => 1,
+        _ => 0,
+    };
+    (now + chrono::Duration::days(offset)).date_naive()
+}
 
-    if editing {
-        edit();
-    } else {
-        tmux();
+fn main() -> Result<()> {
+    let args = Args::parse();
+
+    match args.sub {
+        Some(SubCommand::Edit { tomorrow }) => edit(tomorrow),
+        Some(SubCommand::Show { show_args }) => tmux(&show_args),
+        None => tmux(&args.show_args),
     }
 }
 
-fn tmux() {
+fn load_schedule(path: &std::path::Path) -> Result<Schedule> {
+    let source = std::fs::read_to_string(path)?;
+    let schedule: Schedule = serde_yaml::from_str(&source)?;
+    Ok(schedule)
+}
+
+fn tmux(show_args: &ShowArgs) -> Result<()> {
     let now = chrono::Local::now();
-    let today = if now.hour() > 18 {
-        (now + chrono::Duration::days(1)).date_naive()
-    } else {
-        now.date_naive()
-    };
-    let today = today.to_string();
+    let target_date = target_date(now, show_args.tomorrow);
 
     let dirs = get_dirs();
     let mut main_file = dirs.config_dir().to_owned();
     main_file.push("daytape.yaml");
 
-    let state: Option<DayState> = std::fs::read_to_string(&main_file)
-        .ok()
-        .and_then(|s| serde_yaml::from_str(&s).ok());
-    let state = state.filter(|state| state.date == today);
+    let schedule: Schedule = load_schedule(&main_file).unwrap_or(Schedule::default());
+    let state = schedule.dates.get(&target_date);
 
-    let width = 48;
+    let width = show_args.width as usize;
 
     if state.is_none() {
         print!(
@@ -69,7 +116,7 @@ fn tmux() {
             "No task set",
             width = width
         );
-        return;
+        return Ok(());
     }
     let state = state.unwrap();
 
@@ -104,43 +151,37 @@ fn tmux() {
     }
 
     print!("{to_display}#[bg=default]");
+
+    Ok(())
 }
 
-fn edit() {
+fn edit(tomorrow: bool) -> Result<()> {
     use std::time::{Duration, Instant};
     use termbuffer::{char, App, Draw, Event, Key};
 
     let text_color = Color::Rgb(240, 240, 240);
     let sel_color = Color::Rgb(190, 150, 255);
 
-    let today = chrono::Local::now();
-    let today = if today.hour() > 18 {
-        (today + chrono::Duration::days(1)).date_naive()
-    } else {
-        today.date_naive()
-    };
-    let today = today.to_string();
+    let target_date = target_date(chrono::Local::now(), tomorrow);
 
     let dirs = get_dirs();
     let mut main_file = dirs.config_dir().to_owned();
     main_file.push("daytape.yaml");
 
-    let mut cache_file = dirs.cache_dir().to_owned();
-    cache_file.push(format!("{today}.yaml"));
+    let mut schedule: Schedule = load_schedule(&main_file).unwrap_or(Schedule::default());
 
     let delay = Duration::from_millis(1000 / 60);
 
     let mut app = App::builder().build().unwrap();
 
-    let existing_state: Option<DayState> = std::fs::read_to_string(&main_file)
-        .ok()
-        .and_then(|s| serde_yaml::from_str(&s).ok());
-    let existing_state = existing_state.filter(|state| state.date == today);
-
-    let mut state = existing_state.unwrap_or_else(|| DayState {
-        date: today.clone(),
-        tasks: vec![],
-    });
+    let mut state = schedule
+        .dates
+        .get(&target_date)
+        .cloned()
+        .unwrap_or_else(|| DayState {
+            date: target_date.clone(),
+            tasks: vec![],
+        });
 
     let mut cursor: Time = Time::new(7, 0);
 
@@ -201,13 +242,14 @@ fn edit() {
         }
 
         if save || quit {
-            let output = serde_yaml::to_string(&state).unwrap();
-            std::fs::write(&main_file, &output).unwrap();
-            std::fs::write(&cache_file, &output).unwrap();
+            schedule.dates.retain(|date, _| date >= &target_date);
+            schedule.dates.insert(target_date, state.clone());
+            let output = serde_yaml::to_string(&schedule)?;
+            std::fs::write(&main_file, &output)?;
         }
 
         if quit {
-            break;
+            return Ok(());
         }
 
         if delete {
@@ -249,7 +291,8 @@ fn edit() {
             let mut draw = app.draw();
             let draw = &mut draw;
             let [_w, _h] = [draw.columns(), draw.rows()];
-            drawtext(draw, &today, [0, 0], 10, text_color, Color::Default);
+            let date = target_date.to_string();
+            drawtext(draw, &date, [0, 0], 10, text_color, Color::Default);
 
             drawtext(
                 draw,

@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+color-eyre = "0.6"
 directories = "4"
 serde = { version = "1", features = ["derive"] }
 termbuffer = "0.1"
-serde_yaml = "0.8"
+serde_yaml = "0.9"
