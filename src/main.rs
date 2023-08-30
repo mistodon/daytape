@@ -199,6 +199,8 @@ fn edit(tomorrow: bool) -> Result<()> {
     }
 
     let mut typed = String::new();
+    let mut cmd_mode = false;
+
     loop {
         let mut quit = false;
         let mut save = false;
@@ -215,6 +217,8 @@ fn edit(tomorrow: bool) -> Result<()> {
             .map(|task| task.slot)
             .find(|slot| slot.contains(cursor));
 
+        const VALID_CHARS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_,.;'\"/|()0123456789!?<>~+=*&^%$#@ ";
+
         for event in app.events() {
             match event.unwrap() {
                 Event::Key(Key::Left) => match selected_slot {
@@ -228,15 +232,26 @@ fn edit(tomorrow: bool) -> Result<()> {
                 Event::Key(Key::Up) => cursor -= Time::hours(1),
                 Event::Key(Key::Down) => cursor += Time::hours(1),
                 Event::Key(Key::Backspace) => backspace = true,
+                Event::Key(Key::Esc) => cmd_mode = false,
+                Event::Key(Key::Char(c)) if cmd_mode => {
+                    cmd_mode = false;
+                    match c {
+                        'q' => {
+                            save = true;
+                            quit = true;
+                        }
+                        's' => save = true,
+                        'd' => delete = true,
+                        'x' => quit = true,
+                        _ => (),
+                    }
+                }
                 Event::Key(Key::Char(c)) => match c {
-                    'Q' => quit = true,
-                    'S' => save = true,
-                    'D' => state.tasks.clear(),
                     '[' => scale_down = true,
                     ']' => scale_up = true,
-                    '-' => delete = true,
+                    ':' => cmd_mode = !cmd_mode,
                     ' ' => typed.push(' '),
-                    ch if ch.is_ascii_lowercase() => typed.push(ch),
+                    ch if VALID_CHARS.contains(ch) => typed.push(ch),
                     _ => (),
                 },
                 _ => (),
@@ -245,7 +260,7 @@ fn edit(tomorrow: bool) -> Result<()> {
 
         cursor = cursor.clamp(Time::new(7, 0), Time::new(18, 55));
 
-        if save || quit {
+        if save {
             schedule.dates.retain(|date, _| date >= &target_date);
             schedule.dates.insert(target_date, state.clone());
             let output = serde_yaml::to_string(&schedule)?;
@@ -299,6 +314,11 @@ fn edit(tomorrow: bool) -> Result<()> {
             let [_w, _h] = [draw.columns(), draw.rows()];
             let date = target_date.to_string();
             drawtext(draw, &date, [0, 0], 10, text_color, Color::Default);
+
+            let text_color = match cmd_mode {
+                false => text_color,
+                true => Color::Rgb(140, 140, 140),
+            };
 
             drawtext(
                 draw,
