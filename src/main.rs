@@ -53,6 +53,8 @@ const COLORS: &[[u8; 3]] = &[
     [156, 0, 190],
     [0, 176, 123],
     [104, 0, 176],
+    [255, 0, 172],
+    [0, 122, 198],
 ];
 
 fn get_edit_color(index: usize) -> Color {
@@ -283,7 +285,9 @@ fn edit(tomorrow: bool) -> Result<()> {
                 task.slot.duration += 5;
             }
             if scale_down {
-                task.slot.duration -= 5;
+                if task.slot.duration > 5 {
+                    task.slot.duration -= 5;
+                }
             }
         }
 
@@ -320,27 +324,36 @@ fn edit(tomorrow: bool) -> Result<()> {
 
             draw.set(cy, cx, char!(' ', Color::Default, sel_color));
 
+            let max_width = 36;
             for task in &state.tasks {
                 let [x, y] = task.slot.start.to_grid();
-                let x = ox + x * 3;
-                let y = oy + y - 7;
-                let label_width = (task.slot.duration / 5) * 3;
-                let label = format!("{: <1$}", &task.label, label_width);
+                let mut x = ox + x * 3;
+                let mut y = oy + y - 7;
+                let mut label_width = (task.slot.duration / 5) * 3;
 
-                let color = get_edit_color(task.label.chars().next().unwrap_or('0') as usize);
-                let color = if task.slot.contains(cursor) {
-                    sel_color
-                } else {
-                    color
-                };
-                drawtext(
-                    draw,
-                    &label,
-                    [x, y],
-                    x + label_width,
-                    Color::Rgb(240, 240, 240),
-                    color,
-                );
+                while label_width > 0 {
+                    let usable_width = std::cmp::min(label_width, max_width - (x - ox));
+                    label_width -= usable_width;
+
+                    let label = format!("{: <1$}", &task.label, usable_width);
+
+                    let color = get_edit_color(task.label.chars().next().unwrap_or('0') as usize);
+                    let color = if task.slot.contains(cursor) {
+                        sel_color
+                    } else {
+                        color
+                    };
+                    drawtext(
+                        draw,
+                        &label,
+                        [x, y],
+                        x + usable_width - 1,
+                        Color::Rgb(240, 240, 240),
+                        color,
+                    );
+                    x = ox;
+                    y += 1;
+                }
             }
         }
 
