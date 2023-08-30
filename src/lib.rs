@@ -26,13 +26,25 @@ impl Time {
     }
 
     pub const fn mins(mins: usize) -> Self {
-        Time { hour: 0, min: mins }
+        Time {
+            hour: mins / 60,
+            min: mins % 60,
+        }
     }
 
     pub const fn to_grid(&self) -> [usize; 2] {
         let y = self.hour;
         let x = self.min / 5;
         [x, y]
+    }
+
+    pub const fn in_mins(&self) -> usize {
+        self.hour * 60 + self.min
+    }
+
+    pub fn clamp(&self, min: Time, max: Time) -> Time {
+        let mins = std::cmp::min(std::cmp::max(min.in_mins(), self.in_mins()), max.in_mins());
+        Time::mins(mins)
     }
 }
 

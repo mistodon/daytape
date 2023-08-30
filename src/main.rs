@@ -243,6 +243,8 @@ fn edit(tomorrow: bool) -> Result<()> {
             }
         }
 
+        cursor = cursor.clamp(Time::new(7, 0), Time::new(18, 55));
+
         if save || quit {
             schedule.dates.retain(|date, _| date >= &target_date);
             schedule.dates.insert(target_date, state.clone());
