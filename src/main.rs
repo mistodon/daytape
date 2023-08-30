@@ -164,7 +164,9 @@ fn edit(tomorrow: bool) -> Result<()> {
     let text_color = Color::Rgb(240, 240, 240);
     let sel_color = Color::Rgb(190, 150, 255);
 
-    let target_date = target_date(chrono::Local::now(), tomorrow);
+    let now = chrono::Local::now();
+    let today = now.date_naive();
+    let target_date = target_date(now, tomorrow);
 
     let dirs = get_dirs();
     let mut main_file = dirs.config_dir().to_owned();
@@ -261,7 +263,7 @@ fn edit(tomorrow: bool) -> Result<()> {
         cursor = cursor.clamp(Time::new(7, 0), Time::new(18, 55));
 
         if save {
-            schedule.dates.retain(|date, _| date >= &target_date);
+            schedule.dates.retain(|date, _| date >= &today);
             schedule.dates.insert(target_date, state.clone());
             let output = serde_yaml::to_string(&schedule)?;
             std::fs::write(&main_file, &output)?;

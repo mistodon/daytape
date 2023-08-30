@@ -1,5 +1,7 @@
 # daytape
 
+![Editor](./screenshots/editor.png)
+
 ## Installation
 
 1. Clone this repo.
@@ -7,6 +9,8 @@
 3. Add this to your `.tmux.conf` file: `set -g status-right '#(daytape)'`
 
 You should now see `No task set` in your tmux bar. Once you've set a schedule for today, it will show the current and upcoming events instead.
+
+![tmux status bar](./screenshots/tmux.png)
 
 ## Usage
 
