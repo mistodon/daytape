@@ -57,6 +57,13 @@ const COLORS: &[[u8; 3]] = &[
     [0, 122, 198],
 ];
 
+fn get_color_index(label: &str) -> usize {
+    let digest = md5::compute(label.as_bytes());
+    let bytes: [u8; 16] = digest.into();
+    let number: u128 = u128::from_le_bytes(bytes);
+    (number % COLORS.len() as u128) as usize
+}
+
 fn get_edit_color(index: usize) -> Color {
     let [r, g, b] = COLORS[index % COLORS.len()];
     Color::Rgb(r, g, b)
@@ -138,7 +145,7 @@ fn tmux(show_args: &ShowArgs) -> Result<()> {
             task = current_task;
             run = 0;
             let color = match task {
-                Some(task) => get_tmux_color(task.label.chars().next().unwrap_or('0') as usize),
+                Some(task) => get_tmux_color(get_color_index(&task.label)),
                 None => "default".to_owned(),
             };
             write!(&mut to_display, "#[bg={color}]").unwrap();
@@ -161,7 +168,8 @@ fn edit(tomorrow: bool) -> Result<()> {
     use std::time::{Duration, Instant};
     use termbuffer::{char, App, Draw, Event, Key};
 
-    let text_color = Color::Rgb(240, 240, 240);
+    let solid_text_color = Color::Rgb(240, 240, 240);
+    let text_color = solid_text_color;
     let sel_color = Color::Rgb(190, 150, 255);
 
     let now = chrono::Local::now();
@@ -308,6 +316,9 @@ fn edit(tomorrow: bool) -> Result<()> {
                     task.slot.duration -= 5;
                 }
             }
+            if scale_up || scale_down {
+                cursor = task.slot.end() - Time::mins(5);
+            }
         }
 
         {
@@ -361,7 +372,7 @@ fn edit(tomorrow: bool) -> Result<()> {
 
                     let label = format!("{: <1$}", &task.label, usable_width);
 
-                    let color = get_edit_color(task.label.chars().next().unwrap_or('0') as usize);
+                    let color = get_edit_color(get_color_index(&task.label));
                     let color = if task.slot.contains(cursor) {
                         sel_color
                     } else {
@@ -378,6 +389,11 @@ fn edit(tomorrow: bool) -> Result<()> {
                     x = ox;
                     y += 1;
                 }
+            }
+
+            if cmd_mode {
+                const DOCS: &str = ": (s)ave | save&(q)uit | e(x)it | (d)elete";
+                drawtext(draw, DOCS, [0, 14], 99, solid_text_color, Color::Default);
             }
         }
 
