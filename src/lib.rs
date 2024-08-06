@@ -14,6 +14,8 @@ pub struct Time {
 }
 
 impl Time {
+    pub const MAX: Time = Time::new(23, 59);
+
     pub const fn new(hour: usize, min: usize) -> Self {
         Time { hour, min }
     }
@@ -98,7 +100,12 @@ pub struct TimeSlot {
 
 impl TimeSlot {
     pub fn end(&self) -> Time {
-        self.start + Time::mins(self.duration)
+        let end = self.start + Time::mins(self.duration);
+        if end < self.start {
+            Time::MAX
+        } else {
+            end
+        }
     }
 
     pub fn contains(&self, time: Time) -> bool {

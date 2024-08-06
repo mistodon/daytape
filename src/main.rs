@@ -6,6 +6,11 @@ use termbuffer::Color;
 
 use daytape::{DayState, Schedule, Task, Time, TimeSlot};
 
+const FIRST_HOUR: usize = 7;
+const LAST_HOUR: usize = 23;
+const DAY_START: Time = Time::new(FIRST_HOUR, 0);
+const DAY_END: Time = Time::new(LAST_HOUR, 55);
+
 /// A whole day's schedule in your terminal
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -55,6 +60,8 @@ const COLORS: &[[u8; 3]] = &[
     [104, 0, 176],
     [255, 0, 172],
     [0, 122, 198],
+    [198, 0, 122],
+    [190, 90, 0],
 ];
 
 fn get_color_index(label: &str) -> usize {
@@ -82,7 +89,7 @@ fn get_dirs() -> ProjectDirs {
 }
 
 fn target_date(now: chrono::DateTime<chrono::Local>, tomorrow: bool) -> chrono::NaiveDate {
-    let tomorrow = tomorrow || now.hour() > 18;
+    let tomorrow = tomorrow || now.hour() > LAST_HOUR as u32;
     let offset = match tomorrow {
         true => 1,
         _ => 0,
@@ -195,7 +202,7 @@ fn edit(tomorrow: bool) -> Result<()> {
             tasks: vec![],
         });
 
-    let mut cursor: Time = Time::new(7, 0);
+    let mut cursor: Time = DAY_START;
 
     fn drawtext(d: &mut Draw, text: &str, from: [usize; 2], max_x: usize, fg: Color, bg: Color) {
         let [x, y] = from;
@@ -240,7 +247,11 @@ fn edit(tomorrow: bool) -> Result<()> {
                     None => cursor += Time::mins(5),
                 },
                 Event::Key(Key::Up) => cursor -= Time::hours(1),
-                Event::Key(Key::Down) => cursor += Time::hours(1),
+                Event::Key(Key::Down) => {
+                    if cursor < Time::new(23, 0) {
+                        cursor += Time::hours(1);
+                    }
+                }
                 Event::Key(Key::Backspace) => backspace = true,
                 Event::Key(Key::Esc) => cmd_mode = false,
                 Event::Key(Key::Char(c)) if cmd_mode => {
@@ -268,7 +279,7 @@ fn edit(tomorrow: bool) -> Result<()> {
             }
         }
 
-        cursor = cursor.clamp(Time::new(7, 0), Time::new(18, 55));
+        cursor = cursor.clamp(DAY_START, DAY_END);
 
         if save {
             schedule.dates.retain(|date, _| date >= &today);
@@ -341,7 +352,7 @@ fn edit(tomorrow: bool) -> Result<()> {
                 text_color,
                 Color::Default,
             );
-            for (i, hour) in (7..=18).enumerate() {
+            for (i, hour) in (FIRST_HOUR..=LAST_HOUR).enumerate() {
                 drawtext(
                     draw,
                     &format!("{hour: >4} |"),
@@ -355,7 +366,7 @@ fn edit(tomorrow: bool) -> Result<()> {
             let [ox, oy] = [6, 2];
             let [cx, cy] = cursor.to_grid();
             let cx = ox + cx * 3;
-            let cy = oy + cy - 7;
+            let cy = oy + cy - FIRST_HOUR;
 
             draw.set(cy, cx, char!(' ', Color::Default, sel_color));
 
@@ -363,7 +374,7 @@ fn edit(tomorrow: bool) -> Result<()> {
             for task in &state.tasks {
                 let [x, y] = task.slot.start.to_grid();
                 let mut x = ox + x * 3;
-                let mut y = oy + y - 7;
+                let mut y = oy + y - FIRST_HOUR;
                 let mut label_width = (task.slot.duration / 5) * 3;
 
                 while label_width > 0 {
